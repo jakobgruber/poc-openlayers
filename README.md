@@ -2,6 +2,11 @@
 
 This project was generated using [Angular CLI](https://github.com/angular/angular-cli) version 20.0.4.
 
+## Local install
+npm install --legacy-peer-deps
+param is needed because current version of @ngrx/signals (26.06.25) is not available for Angular 20
+
+
 ## Development server
 
 To start a local development server, run:
