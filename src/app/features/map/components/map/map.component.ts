@@ -17,7 +17,7 @@ import OSM from 'ol/source/OSM';
 import VectorLayer from 'ol/layer/Vector';
 import VectorSource from 'ol/source/Vector';
 import Cluster from 'ol/source/Cluster';
-import Feature, { FeatureLike } from 'ol/Feature'; // Import FeatureLike
+import Feature, { FeatureLike } from 'ol/Feature';
 import Point from 'ol/geom/Point';
 import { fromLonLat } from 'ol/proj';
 import Style from 'ol/style/Style';
@@ -87,11 +87,12 @@ export class MapComponent implements OnInit {
     this.store.setSelectedCategory(category);
     this.vectorSource.clear();
     const features = this.filteredPoiList().map((poi) => {
-      return new Feature({
+      const feature = new Feature({
         geometry: new Point(fromLonLat([poi.longitude, poi.latitude])),
         name: poi.name,
-        category: poi.category,
+        category: poi.category, // Ensure category is set
       });
+      return feature;
     });
     this.vectorSource.addFeatures(features);
   }
@@ -131,7 +132,7 @@ export class MapComponent implements OnInit {
       const tooltipElement = this.tooltipElements()[0]?.nativeElement;
 
       if (feature && tooltipElement) {
-        const features = feature.get('features') || [feature];
+        const features = 'get' in feature && feature.get('features') ? feature.get('features') : [feature];
         const firstFeature = features[0];
         const name = firstFeature.get('name') as string;
         const category = firstFeature.get('category') as Poi['category'];
@@ -149,7 +150,7 @@ export class MapComponent implements OnInit {
   }
 
   private getClusterStyle(feature: FeatureLike): Style {
-    // Check if feature is a Feature<Geometry> with 'features' property (cluster)
+    // Handle clusters
     const features = 'get' in feature && feature.get('features') ? feature.get('features') : [feature];
     const isCluster = features.length > 1;
 
@@ -167,8 +168,15 @@ export class MapComponent implements OnInit {
     }
 
     // Single feature
-    const category = 'get' in feature ? (feature.get('category') as string) : 'unknown';
-    return this.getStyle(category || 'unknown');
+    const singleFeature = features[0];
+    const category = 'get' in singleFeature ? singleFeature.get('category') as string : 'unknown';
+
+    // Additional debugging
+    if (!category || category === 'unknown') {
+      console.warn('Category not found for feature:', singleFeature);
+    }
+
+    return this.getStyle(category);
   }
 
   private getStyle(category: string): Style {
