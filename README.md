@@ -4,6 +4,7 @@ This project was generated using [Angular CLI](https://github.com/angular/angula
 
 ## Local install
 npm install --legacy-peer-deps
+
 param is needed because current version of @ngrx/signals (26.06.25) is not available for Angular 20
 
 
