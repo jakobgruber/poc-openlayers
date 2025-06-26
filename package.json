@@ -6,7 +6,9 @@
     "start": "ng serve",
     "build": "ng build",
     "watch": "ng build --watch --configuration development",
-    "test": "ng test"
+    "test": "ng test",
+    "install:deps": "npm install --legacy-peer-deps",
+    "deploy": "npm run install:deps && npm run build"
   },
   "prettier": {
     "overrides": [
