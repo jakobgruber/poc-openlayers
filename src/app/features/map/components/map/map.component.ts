@@ -37,6 +37,7 @@ import { Poi, PoiCategory } from '../../../../models/poi.model';
     .map {
       height: 70vh;
       width: 100%;
+      position: relative; /* Ensure map is a positioning context */
     }
     .tooltip {
       position: absolute;
@@ -47,10 +48,12 @@ import { Poi, PoiCategory } from '../../../../models/poi.model';
       font-size: 14px;
       pointer-events: none;
       display: none;
-      z-index: 1000;
+      z-index: 10000;
+      opacity: 1;
+      width: 300px;
     }
     .tooltip.visible {
-      display: block;
+      display: block !important; /* Force display */
     }
   `,
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -90,7 +93,7 @@ export class MapComponent implements OnInit {
       const feature = new Feature({
         geometry: new Point(fromLonLat([poi.longitude, poi.latitude])),
         name: poi.name,
-        category: poi.category, // Ensure category is set
+        category: poi.category,
       });
       return feature;
     });
@@ -121,6 +124,8 @@ export class MapComponent implements OnInit {
       element: tooltipElement,
       offset: [0, -15],
       positioning: 'bottom-center',
+      autoPan: false,
+      stopEvent: false, // Allow events to pass through
     });
     this.map.addOverlay(this.tooltipOverlay);
   }
@@ -128,21 +133,43 @@ export class MapComponent implements OnInit {
   private setupHoverInteraction() {
     this.map.on('pointermove', (event) => {
       const pixel = this.map.getEventPixel(event.originalEvent);
-      const feature = this.map.forEachFeatureAtPixel(pixel, (f) => f);
+      const feature = this.map.forEachFeatureAtPixel(pixel, (f) => f, {
+        hitTolerance: 5,
+      });
       const tooltipElement = this.tooltipElements()[0]?.nativeElement;
 
       if (feature && tooltipElement) {
-        const features = 'get' in feature && feature.get('features') ? feature.get('features') : [feature];
-        const firstFeature = features[0];
-        const name = firstFeature.get('name') as string;
-        const category = firstFeature.get('category') as Poi['category'];
-        if (name && category) {
-          tooltipElement.textContent = `${category}: ${name}`;
-          tooltipElement.classList.add('visible');
-          this.tooltipOverlay.setPosition(event.coordinate);
+        const features: Feature[] = 'get' in feature && feature.get('features') ? feature.get('features') : [feature];
+        const isCluster = features.length > 1;
+
+        if (isCluster) {
+          const categories = features
+            .filter((f: Feature) => 'get' in f && f.get('category'))
+            .map((f: Feature) => f.get('category') as string);
+          const uniqueCategories = [...new Set(categories)];
+          tooltipElement.textContent = uniqueCategories.length
+            ? `${features.length} POIs (${uniqueCategories.join(', ')})`
+            : `${features.length} POIs (unknown categories)`;
         } else {
-          tooltipElement.classList.remove('visible');
+          const singleFeature = features[0];
+          if (!('get' in singleFeature)) {
+            console.warn('RenderFeature detected in tooltip:', singleFeature);
+            tooltipElement.classList.remove('visible');
+            return;
+          }
+          const name = singleFeature.get('name') as string;
+          const category = singleFeature.get('category') as Poi['category'];
+          if (name && category) {
+            tooltipElement.textContent = `${category}: ${name}`;
+          } else {
+            console.warn('Invalid tooltip data:', { name, category });
+            tooltipElement.classList.remove('visible');
+            return;
+          }
         }
+
+        tooltipElement.classList.add('visible');
+        this.tooltipOverlay.setPosition(event.coordinate);
       } else if (tooltipElement) {
         tooltipElement.classList.remove('visible');
       }
@@ -150,7 +177,6 @@ export class MapComponent implements OnInit {
   }
 
   private getClusterStyle(feature: FeatureLike): Style {
-    // Handle clusters
     const features = 'get' in feature && feature.get('features') ? feature.get('features') : [feature];
     const isCluster = features.length > 1;
 
@@ -167,11 +193,13 @@ export class MapComponent implements OnInit {
       });
     }
 
-    // Single feature
     const singleFeature = features[0];
-    const category = 'get' in singleFeature ? singleFeature.get('category') as string : 'unknown';
+    if (!('get' in singleFeature)) {
+      console.warn('RenderFeature detected, no category available:', singleFeature);
+      return this.getStyle('unknown');
+    }
 
-    // Additional debugging
+    const category = singleFeature.get('category') as string || 'unknown';
     if (!category || category === 'unknown') {
       console.warn('Category not found for feature:', singleFeature);
     }
