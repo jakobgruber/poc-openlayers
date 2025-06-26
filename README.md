@@ -1,6 +1,6 @@
 # PocOpenlayers
 
-This project was generated using [Angular CLI](https://github.com/angular/angular-cli) version 20.0.4.
+Test Version: https://candid-daffodil-c7e4ab.netlify.app
 
 ## Local install
 npm install --legacy-peer-deps
