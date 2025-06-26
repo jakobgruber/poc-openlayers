@@ -6,7 +6,7 @@ import {
   computed,
   viewChildren,
   ElementRef,
-  afterNextRender
+  afterNextRender,
 } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
@@ -17,19 +17,21 @@ import OSM from 'ol/source/OSM';
 import VectorLayer from 'ol/layer/Vector';
 import VectorSource from 'ol/source/Vector';
 import Cluster from 'ol/source/Cluster';
-import Feature from 'ol/Feature';
+import Feature, { FeatureLike } from 'ol/Feature'; // Import FeatureLike
 import Point from 'ol/geom/Point';
 import { fromLonLat } from 'ol/proj';
 import Style from 'ol/style/Style';
 import CircleStyle from 'ol/style/Circle';
 import Fill from 'ol/style/Fill';
 import Text from 'ol/style/Text';
-import {PoiStore} from '../../../../services/poi.store';
-import {Poi, PoiCategory} from '../../../../models/poi.model';
-import {Overlay} from 'ol';
+import { Overlay } from 'ol';
+import { PoiStore } from '../../../../services/poi.store';
+import { Poi, PoiCategory } from '../../../../models/poi.model';
 
 @Component({
   selector: 'app-map',
+  standalone: true,
+  imports: [CommonModule, FormsModule],
   templateUrl: './map.component.html',
   styles: `
     .map {
@@ -52,7 +54,6 @@ import {Overlay} from 'ol';
     }
   `,
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [CommonModule, FormsModule],
 })
 export class MapComponent implements OnInit {
   selectedCategory = computed<PoiCategory>(() => this.store.selectedCategory());
@@ -60,15 +61,17 @@ export class MapComponent implements OnInit {
   private map!: Map;
   private vectorSource = new VectorSource();
   private clusterSource = new Cluster({ source: this.vectorSource, distance: 40 });
-  private vectorLayer = new VectorLayer({ source: this.clusterSource });
-
+  private vectorLayer = new VectorLayer({
+    source: this.clusterSource,
+    style: (feature) => this.getClusterStyle(feature),
+  });
   private tooltipOverlay!: Overlay;
-  private tooltipElements = viewChildren('tooltip', { read: ElementRef<HTMLDivElement> });
+  private tooltipElements = viewChildren<ElementRef<HTMLDivElement>>('tooltip');
+  private styleCache: Record<string, Style> = {};
 
   private store = inject(PoiStore);
 
   constructor() {
-    // Setup tooltip after render to ensure DOM is ready
     afterNextRender(() => {
       this.setupTooltip();
     });
@@ -83,16 +86,13 @@ export class MapComponent implements OnInit {
   updateMarkers(category: PoiCategory = 'all') {
     this.store.setSelectedCategory(category);
     this.vectorSource.clear();
-    const features = this.filteredPoiList()
-      .map((poi) => {
-        const feature = new Feature({
-          geometry: new Point(fromLonLat([poi.longitude, poi.latitude])),
-          name: poi.name,
-          category: poi.category,
-        });
-        feature.setStyle(this.getStyle(poi.category));
-        return feature;
+    const features = this.filteredPoiList().map((poi) => {
+      return new Feature({
+        geometry: new Point(fromLonLat([poi.longitude, poi.latitude])),
+        name: poi.name,
+        category: poi.category,
       });
+    });
     this.vectorSource.addFeatures(features);
   }
 
@@ -111,7 +111,7 @@ export class MapComponent implements OnInit {
   }
 
   private setupTooltip() {
-    const tooltipElement = this.tooltipElements()?.[0]?.nativeElement;
+    const tooltipElement = this.tooltipElements()[0]?.nativeElement;
     if (!tooltipElement) {
       console.error('Tooltip element not found');
       return;
@@ -128,12 +128,13 @@ export class MapComponent implements OnInit {
     this.map.on('pointermove', (event) => {
       const pixel = this.map.getEventPixel(event.originalEvent);
       const feature = this.map.forEachFeatureAtPixel(pixel, (f) => f);
-      const tooltipElement = this.tooltipElements()?.[0]?.nativeElement;
+      const tooltipElement = this.tooltipElements()[0]?.nativeElement;
 
       if (feature && tooltipElement) {
-        const properties = feature.getProperties();
-        const name = properties['name'] as string;
-        const category = properties['category'] as Poi['category'];
+        const features = feature.get('features') || [feature];
+        const firstFeature = features[0];
+        const name = firstFeature.get('name') as string;
+        const category = firstFeature.get('category') as Poi['category'];
         if (name && category) {
           tooltipElement.textContent = `${category}: ${name}`;
           tooltipElement.classList.add('visible');
@@ -147,17 +148,45 @@ export class MapComponent implements OnInit {
     });
   }
 
+  private getClusterStyle(feature: FeatureLike): Style {
+    // Check if feature is a Feature<Geometry> with 'features' property (cluster)
+    const features = 'get' in feature && feature.get('features') ? feature.get('features') : [feature];
+    const isCluster = features.length > 1;
+
+    if (isCluster) {
+      return new Style({
+        image: new CircleStyle({
+          radius: 15,
+          fill: new Fill({ color: 'rgba(0, 0, 0, 0.5)' }),
+        }),
+        text: new Text({
+          text: features.length.toString(),
+          fill: new Fill({ color: 'white' }),
+        }),
+      });
+    }
+
+    // Single feature
+    const category = 'get' in feature ? (feature.get('category') as string) : 'unknown';
+    return this.getStyle(category || 'unknown');
+  }
 
   private getStyle(category: string): Style {
+    if (this.styleCache[category]) {
+      return this.styleCache[category];
+    }
+
     const colors: Record<string, string> = {
       pizzeria: 'red',
       tourist_attraction: 'blue',
       ice_cream: 'green',
     };
-    return new Style({
+    const color = colors[category] || 'gray';
+
+    const style = new Style({
       image: new CircleStyle({
         radius: 10,
-        fill: new Fill({ color: colors[category] }),
+        fill: new Fill({ color }),
       }),
       text: new Text({
         text: category.charAt(0).toUpperCase(),
@@ -165,5 +194,8 @@ export class MapComponent implements OnInit {
         offsetY: -15,
       }),
     });
+
+    this.styleCache[category] = style;
+    return style;
   }
 }
