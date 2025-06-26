@@ -1,0 +1,20 @@
+<div class="container-fluid">
+  <div class="mb-3">
+    <label for="categoryFilter" class="form-label">Filter Categories:</label>
+    <select
+      id="categoryFilter"
+      class="form-select"
+      multiple
+      [(ngModel)]="selectedCategory"
+      (ngModelChange)="updateMarkers($event?.[0])"
+    >
+      <option selected value="all">All</option>
+      <option value="pizzeria">Pizzeria</option>
+      <option value="tourist_attraction">Tourist Attraction</option>
+      <option value="ice_cream">Ice Cream</option>
+    </select>
+  </div>
+  <div id="map" class="map">
+    <div #tooltip class="tooltip"></div>
+  </div>
+</div>
